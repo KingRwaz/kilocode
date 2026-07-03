@@ -1,0 +1,732 @@
+# Instincts generated from https://github.com/KingRwaz/kilocode
+# Generated: 2026-07-03T10:30:45.953Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: kilocode-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: chore, fix, test, feat, refactor
+
+## Evidence
+
+- 100 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix(cli): include working tree in WorktreeFamily.list for submodules, test(telemetry): isolate shutdown timeout test in its own file
+
+---
+id: kilocode-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Commit Length
+
+## Action
+
+Keep commit messages concise (~44 characters)
+
+## Evidence
+
+- Average commit message length: 44 chars
+- Based on 100 commits
+
+---
+id: kilocode-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: kilocode-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: kilocode-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: kilocode-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: 
+
+---
+id: kilocode-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Test Framework
+
+## Action
+
+Use playwright as the test framework
+
+## Evidence
+
+- Test framework detected: playwright
+- File pattern: *.test.ts
+
+---
+id: kilocode-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: kilocode-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Test Types
+
+## Action
+
+Write unit, integration, e2e tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration, e2e
+- Coverage config: no
+
+---
+id: kilocode-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.7
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~4x per month
+- Files: packages/kilo-telemetry/src/__tests__/*, packages/kilo-telemetry/src/*, packages/opencode/src/*
+
+---
+id: kilocode-workflow-refactoring
+trigger: "when refactoring code"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Refactoring
+
+## Action
+
+Follow the refactoring workflow:
+1. Ensure tests pass before refactor
+2. Refactor code structure
+3. Verify tests still pass
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/**/*
+
+---
+id: kilocode-workflow-feature-or-fix-with-test-and-changeset
+trigger: "when doing feature or fix with test and changeset"
+confidence: 0.75
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Feature Or Fix With Test And Changeset
+
+## Action
+
+Follow the feature-or-fix-with-test-and-changeset workflow:
+1. Edit or create implementation files (usually in packages/opencode/src/...)
+2. Add or update corresponding test files (usually in packages/opencode/test/...)
+3. Add a .changeset/*.md file describing the change
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~5x per month
+- Files: packages/opencode/src/**/*.ts, packages/opencode/test/**/*.test.ts, .changeset/*.md
+
+---
+id: kilocode-workflow-feature-or-fix-with-test-no-changeset
+trigger: "when doing feature or fix with test no changeset"
+confidence: 0.7
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Feature Or Fix With Test No Changeset
+
+## Action
+
+Follow the feature-or-fix-with-test-no-changeset workflow:
+1. Edit or create implementation files (usually in packages/opencode/src/...)
+2. Add or update corresponding test files (usually in packages/opencode/test/...)
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~4x per month
+- Files: packages/opencode/src/**/*.ts, packages/opencode/test/**/*.test.ts
+
+---
+id: kilocode-workflow-generate-or-sync-after-feature
+trigger: "when doing generate or sync after feature"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Generate Or Sync After Feature
+
+## Action
+
+Follow the generate-or-sync-after-feature workflow:
+1. Run code generation or test update scripts
+2. Commit changes to generated files (often test files or .gen.ts/.json files)
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~6x per month
+- Files: packages/opencode/test/**/*.test.ts, packages/opencode/src/**/*.gen.ts, packages/sdk/openapi.json
+
+---
+id: kilocode-workflow-update-nix-node-modules-hashes
+trigger: "when doing update nix node modules hashes"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Update Nix Node Modules Hashes
+
+## Action
+
+Follow the update-nix-node-modules-hashes workflow:
+1. Run hash update script
+2. Commit changes to nix/hashes.json
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: nix/hashes.json
+
+---
+id: kilocode-workflow-version-bump-sync-release
+trigger: "when doing version bump sync release"
+confidence: 0.55
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Version Bump Sync Release
+
+## Action
+
+Follow the version-bump-sync-release workflow:
+1. Update version numbers in all relevant package.json files
+2. Update lockfiles (bun.lock, package-lock.json, etc.)
+3. Commit all updated files
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~1x per month
+- Files: packages/*/package.json, bun.lock, package.json
+
+---
+id: kilocode-workflow-tui-plugin-or-keymap-feature
+trigger: "when doing tui plugin or keymap feature"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/KingRwaz/kilocode
+---
+
+# Kilocode Workflow Tui Plugin Or Keymap Feature
+
+## Action
+
+Follow the tui-plugin-or-keymap-feature workflow:
+1. Edit or create TUI plugin/keymap files (packages/opencode/src/cli/cmd/tui/...)
+2. Update or add config/schema/spec files
+3. Add or update related tests (packages/opencode/test/cli/tui/...)
+4. Optionally update documentation (packages/web/src/content/docs/...)
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: packages/opencode/src/cli/cmd/tui/**/*.ts*, packages/opencode/src/config/keybinds.ts, packages/opencode/specs/**/*.md
+
+---
+id: kilocode-naming-files-kebab-case
+trigger: "When creating or renaming a file"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Naming Files Kebab Case
+
+## Action
+
+Name the file using kebab-case
+
+## Evidence
+
+- Pattern in file naming conventions
+- Observed in packages/app/playwright.config.ts
+
+---
+id: kilocode-naming-functions-camelCase
+trigger: "When defining a function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Naming Functions CamelCase
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+- TypeScript codebase
+
+---
+id: kilocode-naming-classes-pascal-case
+trigger: "When defining a class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Naming Classes Pascal Case
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: kilocode-naming-constants-screaming-snake-case
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Naming Constants Screaming Snake Case
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: kilocode-import-style-relative
+trigger: "When importing modules within the repository"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Import Style Relative
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+- TypeScript codebase
+
+---
+id: kilocode-export-style-named
+trigger: "When exporting functions, classes, or constants"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Export Style Named
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: kilocode-testing-file-pattern
+trigger: "When creating a test file"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Testing File Pattern
+
+## Action
+
+Name the file with a .test.ts suffix
+
+## Evidence
+
+- Pattern in testing.filePattern
+- Seen in packages/kilo-telemetry/src/__tests__/telemetry.test.ts
+
+---
+id: kilocode-testing-framework-playwright
+trigger: "When writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Testing Framework Playwright
+
+## Action
+
+Use Playwright as the test framework
+
+## Evidence
+
+- Pattern in testing.framework
+- Presence of playwright.config.ts
+
+---
+id: kilocode-testing-types
+trigger: "When designing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Testing Types
+
+## Action
+
+Include unit, integration, and e2e tests as appropriate
+
+## Evidence
+
+- Pattern in testing.testTypes
+
+---
+id: kilocode-testing-location-mixed
+trigger: "When placing test files"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Testing Location Mixed
+
+## Action
+
+Place test files alongside source files or in dedicated test folders as appropriate
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+- Seen in packages/kilo-telemetry/src/__tests__/
+
+---
+id: kilocode-git-commit-conventional
+trigger: "When writing a commit message"
+confidence: 0.95
+domain: git
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Git Commit Conventional
+
+## Action
+
+Use conventional commit prefixes (chore, fix, test, feat, refactor)
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Seen in commit fix(cli): bound Telemetry.shutdown so unreachable PostHog endpoint cannot block CLI exit
+
+---
+id: kilocode-git-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Git Commit Length
+
+## Action
+
+Keep the commit message concise (average length ~44 characters)
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: kilocode-workflow-feature-with-test-and-changeset
+trigger: "When adding a new feature or fixing a bug that should be tested and documented for release notes"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Workflow Feature With Test And Changeset
+
+## Action
+
+Edit or create implementation files, add/update test files, and add a .changeset/*.md file
+
+## Evidence
+
+- Workflow: feature-or-fix-with-test-and-changeset
+- Files: packages/opencode/src/**/*.ts, packages/opencode/test/**/*.test.ts, .changeset/*.md
+
+---
+id: kilocode-workflow-feature-with-test-no-changeset
+trigger: "When adding a new feature or fixing a bug that is internal or non-user-facing and should be tested"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Workflow Feature With Test No Changeset
+
+## Action
+
+Edit or create implementation files and add/update test files, but do not add a .changeset file
+
+## Evidence
+
+- Workflow: feature-or-fix-with-test-no-changeset
+- Files: packages/opencode/src/**/*.ts, packages/opencode/test/**/*.test.ts
+
+---
+id: kilocode-workflow-generate-or-sync-after-feature
+trigger: "When a feature or fix requires updating generated files or test outputs"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Workflow Generate Or Sync After Feature
+
+## Action
+
+Run code generation or test update scripts and commit changes to generated files
+
+## Evidence
+
+- Workflow: generate-or-sync-after-feature
+- Files: packages/opencode/test/**/*.test.ts, packages/opencode/src/**/*.gen.ts, packages/sdk/openapi.json, packages/ui/src/components/**/*.tsx
+
+---
+id: kilocode-workflow-update-nix-node-modules-hashes
+trigger: "When dependencies or package.json change and Nix build reproducibility is required"
+confidence: 0.98
+domain: workflow
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Workflow Update Nix Node Modules Hashes
+
+## Action
+
+Run hash update script and commit changes to nix/hashes.json
+
+## Evidence
+
+- Workflow: update-nix-node-modules-hashes
+- File: nix/hashes.json
+
+---
+id: kilocode-workflow-version-bump-sync-release
+trigger: "When preparing a new release and synchronizing package versions and lockfiles"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Workflow Version Bump Sync Release
+
+## Action
+
+Update version numbers in all relevant package.json files, update lockfiles, and commit all updated files
+
+## Evidence
+
+- Workflow: version-bump-sync-release
+- Files: packages/*/package.json, bun.lock, package.json, packages/opencode/package.json
+
+---
+id: kilocode-workflow-tui-plugin-or-keymap-feature
+trigger: "When adding or updating a TUI plugin or keymap feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: KingRwaz/kilocode
+---
+
+# Kilocode Workflow Tui Plugin Or Keymap Feature
+
+## Action
+
+Edit or create TUI plugin/keymap files, update config/schema/spec files, add/update related tests, and optionally update documentation
+
+## Evidence
+
+- Workflow: tui-plugin-or-keymap-feature
+- Files: packages/opencode/src/cli/cmd/tui/**/*.ts*, packages/opencode/src/config/keybinds.ts, packages/opencode/specs/**/*.md, packages/opencode/test/cli/tui/**/*.test.ts, packages/web/src/content/docs/**/*.mdx
+
