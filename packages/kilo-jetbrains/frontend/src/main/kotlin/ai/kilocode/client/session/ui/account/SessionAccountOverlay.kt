@@ -2,11 +2,13 @@ package ai.kilocode.client.session.ui.account
 
 import ai.kilocode.client.plugin.KiloBundle
 import ai.kilocode.client.session.controller.SessionControllerEvent
+import ai.kilocode.client.session.ui.style.SessionUiStyle
 import ai.kilocode.client.ui.FilledBadgeIcon
 import ai.kilocode.client.ui.HoverIcon
 import ai.kilocode.client.ui.PickerButton
 import ai.kilocode.client.ui.RoundedContentPanel
 import ai.kilocode.client.ui.UiStyle
+import ai.kilocode.client.ui.layout.Stack
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.CollectionListModel
@@ -24,10 +26,7 @@ import java.awt.Cursor
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
-import javax.swing.Box
-import javax.swing.BoxLayout
 import javax.swing.JComponent
-import javax.swing.JPanel
 import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 import javax.swing.ScrollPaneConstants
@@ -68,15 +67,10 @@ internal class SessionAccountOverlay(
         addActionListener { profile() }
     }
 
-    private val row = JPanel().apply {
-        layout = BoxLayout(this, BoxLayout.X_AXIS)
-        isOpaque = false
-        add(picker)
-        add(Box.createHorizontalStrut(UiStyle.Gap.md()))
-        add(balance)
-        add(Box.createHorizontalStrut(UiStyle.Gap.md()))
-        add(profileBtn)
-    }
+    private val row = Stack.horizontal(gap = UiStyle.Gap.md())
+        .next(picker)
+        .next(balance)
+        .next(profileBtn)
 
     private val panel = RoundedContentPanel(UiStyle.Gap.lg(), UiStyle.Gap.lg()).apply {
         addToCenter(row)
@@ -130,7 +124,8 @@ internal class SessionAccountOverlay(
         var layout = false
 
         val orgs = prof.organizations
-        val next = listOf(AccountChoice(null, KiloBundle.message("profile.personalAccount"))) +
+        val personal = prof.hasPersonalAccount
+        val next = (if (personal) listOf(AccountChoice(null, KiloBundle.message("profile.personalAccount"))) else emptyList()) +
             orgs.map { org -> AccountChoice(org.id, org.name) }
         if (next != choices) {
             choices = next
@@ -139,7 +134,7 @@ internal class SessionAccountOverlay(
 
         if (currentOrgId != prof.currentOrgId) currentOrgId = prof.currentOrgId
 
-        val activeId = if (switching) target else prof.currentOrgId
+        val activeId = if (switching) target else prof.currentOrgId ?: if (personal) null else orgs.firstOrNull()?.id
         val active = choices.firstOrNull { it.org == activeId } ?: choices.firstOrNull()
         val title = "${active?.title ?: " "} ▾"
         if (picker.text != title) {
@@ -186,8 +181,7 @@ internal class SessionAccountOverlay(
             if (balanceText != next || balance.icon == null) {
                 balance.icon = FilledBadgeIcon(
                     next,
-                    UiStyle.Colors.badgeBg(),
-                    UiStyle.Colors.badgeFg(),
+                    UiStyle.Badge.Secondary,
                 )
                 layout = true
             }
@@ -200,7 +194,7 @@ internal class SessionAccountOverlay(
 
     @RequiresEdt
     private fun showPopup() {
-        val bg = UiStyle.Colors.cardBg()
+        val bg = SessionUiStyle.AccountPopup.bgColor()
         val model = CollectionListModel(choices)
         val list = JBList(model).apply {
             selectionMode = ListSelectionModel.SINGLE_SELECTION
@@ -291,7 +285,7 @@ internal class SessionAccountOverlay(
     internal fun choiceCount() = choices.size
     internal fun selectedIndex() = choices.indexOfFirst { it.org == currentOrgId }.takeIf { it >= 0 } ?: 0
     internal fun panelBackground() = panel.background
-    internal fun panelBorderColor() = UiStyle.Colors.cardBorder()
+    internal fun panelBorderColor() = SessionUiStyle.AccountPopup.outlineColor()
     internal fun balanceVisible() = balance.isVisible
     internal fun balanceIcon() = balance.icon
     internal fun balanceText() = balanceText

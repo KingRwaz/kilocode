@@ -3,18 +3,13 @@ import {
   ensureIndexingPlugin,
   indexingEnabled,
   INDEXING_PLUGIN,
-  resolveIndexingPlugin,
 } from "../../src/kilocode/indexing-feature"
 
 describe("indexing plugin helpers", () => {
   test("detects plugin-enabled configs", () => {
     expect(indexingEnabled({ plugin: ["global-plugin"] })).toBe(false)
-    expect(indexingEnabled({ plugin: [INDEXING_PLUGIN] })).toBe(false)
-    expect(indexingEnabled({ plugin: [INDEXING_PLUGIN], experimental: { semantic_indexing: false } })).toBe(false)
-    expect(indexingEnabled({ plugin: [INDEXING_PLUGIN], experimental: { semantic_indexing: true } })).toBe(true)
-    expect(
-      indexingEnabled({ plugin: ["@kilocode/kilo-indexing@1.0.0"], experimental: { semantic_indexing: true } }),
-    ).toBe(true)
+    expect(indexingEnabled({ plugin: [INDEXING_PLUGIN] })).toBe(true)
+    expect(indexingEnabled({ plugin: ["@kilocode/kilo-indexing@1.0.0"] })).toBe(true)
   })
 
   test("adds indexing plugin when present but missing from config", () => {
@@ -31,14 +26,5 @@ describe("indexing plugin helpers", () => {
   test("skips hard-enable when plugin package is unavailable", () => {
     const list = ensureIndexingPlugin(["global-plugin"], undefined)
     expect(list).toEqual(["global-plugin"])
-  })
-
-  test("falls back to package marker when resolver fails", () => {
-    const plugin = resolveIndexingPlugin({
-      resolve() {
-        throw new Error("missing")
-      },
-    })
-    expect(plugin).toBe(INDEXING_PLUGIN)
   })
 })

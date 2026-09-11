@@ -2,11 +2,12 @@ package ai.kilocode.client.session.views
 
 import ai.kilocode.client.plugin.KiloBundle
 import ai.kilocode.client.session.ui.SessionView
-import ai.kilocode.client.session.views.base.BaseQuestionView
+import ai.kilocode.client.session.views.base.DialogView
+import ai.kilocode.client.session.ui.selection.SessionSelection
 import ai.kilocode.client.session.ui.style.SessionEditorStyle
-import ai.kilocode.client.session.ui.style.SessionEditorStyleTarget
 import com.intellij.util.concurrency.annotations.RequiresEdt
-import com.intellij.util.ui.components.BorderLayoutPanel
+import java.awt.Container
+import javax.swing.JButton
 
 /**
  * Retained inline view shown at the bottom of the transcript when a session
@@ -19,11 +20,11 @@ import com.intellij.util.ui.components.BorderLayoutPanel
 class LoginRequiredView(
     private val openProfile: () -> Unit,
     private val dismiss: () -> Unit,
-) : BorderLayoutPanel(), SessionEditorStyleTarget, SessionView {
+    selection: SessionSelection? = null,
+    focus: (() -> Unit)? = null,
+) : DialogView(selection, focus), SessionView {
 
     override val sessionViewKind = SessionView.Kind.Default
-
-    private val card = BaseQuestionView()
 
     private val ID_DISMISS = "dismiss"
     private val ID_OPEN = "open"
@@ -32,19 +33,17 @@ class LoginRequiredView(
         isOpaque = false
         isVisible = false
 
-        card.setHeader(KiloBundle.message("session.login.required.title"))
-        card.setActions(listOf(
-            BaseQuestionView.Action(ID_DISMISS, KiloBundle.message("session.login.required.dismiss"), primary = false) { dismiss() },
-            BaseQuestionView.Action(ID_OPEN, KiloBundle.message("session.login.required.button"), primary = true) { openProfile() },
+        setHeader(KiloBundle.message("session.login.required.title"))
+        setActions(listOf(
+            DialogView.Action(ID_DISMISS, KiloBundle.message("session.login.required.dismiss"), primary = false) { dismiss() },
+            DialogView.Action(ID_OPEN, KiloBundle.message("session.login.required.button"), primary = true) { openProfile() },
         ))
-
-        addToCenter(card)
     }
 
     /** Make the view visible with [message] shown as the description. */
     @RequiresEdt
     fun show(message: String) {
-        card.setDescription(message)
+        setDescription(message)
         isVisible = true
         refresh()
     }
@@ -59,17 +58,22 @@ class LoginRequiredView(
 
     @RequiresEdt
     override fun applyStyle(style: SessionEditorStyle) {
-        card.applyStyle(style)
+        super.applyStyle(style)
     }
 
     // Test helpers — return generic JButton to keep SessionQuestionButton internal
-    internal fun openProfileButton() = card.actionButtonsForTest()[ID_OPEN]!!
-    internal fun dismissButton() = card.actionButtonsForTest()[ID_DISMISS]!!
+    internal fun openProfileButton() = button(KiloBundle.message("session.login.required.button"))
+    internal fun dismissButton() = button(KiloBundle.message("session.login.required.dismiss"))
 
-    private fun refresh() {
-        revalidate()
-        repaint()
-        parent?.revalidate()
-        parent?.repaint()
+    private fun button(text: String) = buttons(this).first { it.text == text }
+
+    private fun buttons(root: Container): List<JButton> {
+        val result = mutableListOf<JButton>()
+        if (root is JButton) result.add(root)
+        for (child in root.components) {
+            if (child is Container) result.addAll(buttons(child))
+        }
+        return result
     }
+
 }

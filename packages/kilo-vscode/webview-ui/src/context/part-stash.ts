@@ -24,6 +24,11 @@ export class PartStash {
     return this.map.get(messageID)
   }
 
+  read(messageID: string, parts: Record<string, Part[]>): Part[] {
+    const live = parts[messageID]
+    return this.peek(messageID) ?? live ?? []
+  }
+
   /**
    * Invalidate any stashed parts for a message. Callers MUST invoke this in
    * every path that removes a message from state (messageRemoved,
@@ -34,6 +39,16 @@ export class PartStash {
    */
   remove(messageID: string): void {
     this.map.delete(messageID)
+  }
+
+  /** Remove one stale part while keeping the message stash authoritative. */
+  removePart(messageID: string, partID: string): void {
+    const parts = this.map.get(messageID)
+    if (!parts) return
+    this.map.set(
+      messageID,
+      parts.filter((part) => part.id !== partID),
+    )
   }
 
   /**

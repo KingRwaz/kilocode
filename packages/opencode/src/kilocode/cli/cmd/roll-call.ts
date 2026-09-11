@@ -1,11 +1,34 @@
 import type { Argv } from "yargs"
-import { WithInstance } from "../../../project/with-instance"
-import { Provider } from "../../../provider/provider"
+import type { Provider } from "../../../provider/provider"
+import type { generateText } from "ai"
 import { ProviderTransform } from "../../../provider/transform"
 import { cmd } from "../../../cli/cmd/cmd"
 import { UI } from "../../../cli/ui"
-import { generateText } from "ai"
 import { randomUUID } from "crypto"
+
+// Keep the top-level import graph light: this module is registered eagerly at CLI
+// startup, so implementation dependencies (provider service, AppRuntime, the `ai`
+// SDK) are imported lazily (same deferral pattern as upstream opencode#30453).
+// Resolved once per process: roll-call's per-model path must not re-await import
+// resolution for every model.
+let cache: ReturnType<typeof loadDeps> | undefined
+function loadDeps() {
+  return Promise.all([
+    import("../../../effect/app-runtime"),
+    import("../../../provider/provider"),
+    import("../../../effect/runtime-flags"),
+    import("ai"),
+  ]).then(([runtime, provider, flags, ai]) => ({
+    AppRuntime: runtime.AppRuntime,
+    Provider: provider.Provider,
+    RuntimeFlags: flags.RuntimeFlags,
+    generateText: ai.generateText,
+  }))
+}
+function deps() {
+  cache ??= loadDeps()
+  return cache
+}
 
 const HEADERS = ["Model", "Access", "Snippet", "Latency"]
 const PADDING = 9
@@ -125,8 +148,23 @@ interface Result {
   errorMessage: string | null
 }
 
+async function list() {
+  const { AppRuntime, Provider } = await deps()
+  return AppRuntime.runPromise(Provider.Service.use((svc) => svc.list()))
+}
+
+async function lang(model: Provider.Model) {
+  const { AppRuntime, Provider } = await deps()
+  return AppRuntime.runPromise(Provider.Service.use((svc) => svc.getLanguage(model)))
+}
+
+export function outputLimit(model: Provider.Model, outputTokenMax?: number) {
+  return ProviderTransform.maxOutputTokens(model, outputTokenMax)
+}
+
 export async function handle(args: ArgumentsCamelCase) {
-  const list = args.list ?? Provider.list
+  const { provide } = await import("../../instance")
+  const load = args.list ?? list
 
   if (args.parallel < 1) {
     UI.error("--parallel must be at least 1")
@@ -158,10 +196,10 @@ export async function handle(args: ArgumentsCamelCase) {
     )
   }
 
-  await WithInstance.provide({
+  await provide({
     directory: process.cwd(),
     async fn() {
-      const providers = await list()
+      const providers = await load()
       const regex = (() => {
         try {
           return new RegExp(args.filter, "i")
@@ -272,11 +310,14 @@ async function call(
   start: number,
 ): Promise<Omit<Result, "model">> {
   try {
-    const language = await Provider.getLanguage(model)
+    const { AppRuntime, RuntimeFlags, generateText } = await deps()
+    const language = await lang(model)
     const sessionID = randomUUID()
     const options = ProviderTransform.options({ model, sessionID })
     const providerOptions = ProviderTransform.providerOptions(model, options)
-    const maxOutputTokens = ProviderTransform.maxOutputTokens(model)
+    const maxOutputTokens = await AppRuntime.runPromise(
+      RuntimeFlags.Service.useSync((flags) => outputLimit(model, flags.outputTokenMax)),
+    )
     const temperature = ProviderTransform.temperature(model)
     const topP = ProviderTransform.topP(model)
     const topK = ProviderTransform.topK(model)
@@ -342,5 +383,5 @@ type ArgumentsCamelCase = {
   output: "table" | "json" | "md"
   verbose: boolean
   quiet: boolean
-  list?: typeof Provider.list
+  list?: typeof list
 }

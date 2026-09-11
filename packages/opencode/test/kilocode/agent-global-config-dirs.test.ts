@@ -1,25 +1,19 @@
 // kilocode_change - new file
-import { afterEach, test, expect } from "bun:test"
-import { disposeAllInstances, tmpdir } from "../fixture/fixture"
-import { WithInstance } from "../../src/project/with-instance"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { expect } from "bun:test"
+import { Effect } from "effect"
+import { testEffect } from "../lib/effect"
 import { Agent } from "../../src/agent/agent"
 import { Permission } from "../../src/permission"
 import { Global } from "@opencode-ai/core/global"
 
-afterEach(async () => {
-  await disposeAllInstances()
-})
+const it = testEffect(AppNodeBuilder.build(Agent.node))
 
-test("code agent allows global config directory reads by default", async () => {
-  await using tmp = await tmpdir()
-  await WithInstance.provide({
-    directory: tmp.path,
-    fn: async () => {
-      const code = await Agent.get("code")
-      expect(code).toBeDefined()
-      expect(Permission.evaluate("external_directory", `${Global.Path.config}/*`, code!.permission).action).toBe(
-        "allow",
-      )
-    },
-  })
-})
+it.instance("code agent allows global config directory reads by default", () =>
+  Effect.gen(function* () {
+    const agent = yield* Agent.Service
+    const code = yield* agent.get("code")
+    expect(code).toBeDefined()
+    expect(Permission.evaluate("external_directory", `${Global.Path.config}/*`, code!.permission).action).toBe("allow")
+  }),
+)

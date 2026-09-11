@@ -1,10 +1,21 @@
 import { sampledChecksum } from "@opencode-ai/core/util/encode"
-import { FileDiff, type FileDiffOptions, type SelectedLineRange, VirtualizedFileDiff } from "@pierre/diffs"
+import {
+  FileDiff,
+  type FileDiffMetadata,
+  type FileDiffOptions,
+  processFile,
+  type SelectedLineRange,
+  VirtualizedFileDiff,
+} from "@pierre/diffs"
 import { createMediaQuery } from "@solid-primitives/media"
-import { createEffect, createMemo, createSignal, on, onCleanup, splitProps, untrack } from "solid-js"
-import { createDefaultOptions, type DiffProps, styleVariables } from "../pierre"
+import { createComputed, createEffect, createMemo, createSignal, on, onCleanup, splitProps, untrack } from "solid-js"
+import { createDefaultOptions, type DiffHandle, type DiffProps, styleVariables } from "../pierre"
+import { capture } from "../pierre/scroll"
 import { acquireVirtualizer, virtualMetrics } from "@opencode-ai/ui/pierre/virtualizer"
 import { getWorkerPool } from "@opencode-ai/ui/pierre/worker"
+import { attachLineSelectionListeners, readSelectedLineRange } from "../pierre/selection"
+import { applyDiffCommentedLines, diffRowIndex } from "../pierre/diff-dom"
+import { fixDiffSelection } from "../pierre/selection-range"
 
 type SelectionSide = "additions" | "deletions"
 
@@ -15,6 +26,23 @@ const ESTIMATED_LINE_HEIGHT = 20
 const MIN_PLACEHOLDER_HEIGHT = 160
 const MAX_PLACEHOLDER_HEIGHT = 1200
 type Job = { run: () => void; cancelled: boolean }
+
+const sizes = new WeakMap<object, Map<number, number>>()
+const WIDTH_LIMIT = 8
+
+function remember(key: object | undefined, width: number, height: number) {
+  if (!key || width <= 0 || height <= 0) return
+  const widths = sizes.get(key) ?? new Map<number, number>()
+  widths.delete(width)
+  widths.set(width, height)
+  if (widths.size > WIDTH_LIMIT) widths.delete(widths.keys().next().value!)
+  sizes.set(key, widths)
+}
+
+function reserved(key: object | undefined, width: number) {
+  if (!key || width <= 0) return
+  return sizes.get(key)?.get(width)
+}
 
 // A review can contain many expanded diff components. Creating one
 // IntersectionObserver per diff showed up in profiles, so all deferred diffs
@@ -49,14 +77,21 @@ function enqueue(job: Job) {
   schedule()
 }
 
-// When a large batch of diffs becomes near-visible at once, render one diff per
-// animation frame. This keeps the UI responsive while preserving expanded state.
+const FRAME_BUDGET_MS = 12
+
+// When a batch of diffs becomes near-visible at once, render within a per-frame
+// time budget so visible diffs populate smoothly in the same frame while preserving
+// 60fps responsiveness for large lists.
 function schedule() {
   if (frame !== undefined) return
   frame = requestAnimationFrame(() => {
     frame = undefined
-    const job = queue.shift()
-    if (job && !job.cancelled) job.run()
+    const deadline = performance.now() + FRAME_BUDGET_MS
+    while (queue.length > 0) {
+      const job = queue.shift()
+      if (job && !job.cancelled) job.run()
+      if (performance.now() >= deadline) break
+    }
     if (queue.length > 0) schedule()
   })
 }
@@ -142,6 +177,7 @@ export function Diff<T>(props: DiffProps<T>) {
   let container!: HTMLDivElement
   let observer: MutationObserver | undefined
   let sharedVirtualizer: NonNullable<ReturnType<typeof acquireVirtualizer>> | undefined
+  let parsed: { patch: string; diff: FileDiffMetadata } | undefined
   let renderToken = 0
   let selectionFrame: number | undefined
   let dragFrame: number | undefined
@@ -156,6 +192,7 @@ export function Diff<T>(props: DiffProps<T>) {
   const [local, others] = splitProps(props, [
     "before",
     "after",
+    "patch",
     "fileDiff",
     "class",
     "classList",
@@ -163,10 +200,15 @@ export function Diff<T>(props: DiffProps<T>) {
     "selectedLines",
     "commentedLines",
     "onRendered",
+    "visible",
+    "handle",
+    "scrollTo",
+    "virtualized",
+    "sizeKey",
   ])
 
   const mobile = createMediaQuery("(max-width: 640px)")
-  const [visible, setVisible] = createSignal(false)
+  const [visible, setVisible] = createSignal(local.visible === true)
 
   const before = createMemo(() => {
     if (local.fileDiff) return local.fileDiff.deletionLines.join("")
@@ -178,10 +220,23 @@ export function Diff<T>(props: DiffProps<T>) {
   })
 
   const estimate = createMemo(() => {
-    const value = Math.max(lines(before()), lines(after())) * ESTIMATED_LINE_HEIGHT
+    // A tracked detail response already carries a hunk-bounded git patch. Base
+    // placeholder height on that patch instead of the full source file so a
+    // tiny change in a large file does not reserve a large gray body.
+    const patch = "patch" in local && typeof local.patch === "string" ? local.patch : ""
+    const value = (patch ? lines(patch) : Math.max(lines(before()), lines(after()))) * ESTIMATED_LINE_HEIGHT
     if (value === 0) return MIN_PLACEHOLDER_HEIGHT
     return Math.max(MIN_PLACEHOLDER_HEIGHT, Math.min(value, MAX_PLACEHOLDER_HEIGHT))
   })
+
+  const patchDiff = () => {
+    if (!("patch" in local) || typeof local.patch !== "string" || local.patch.length === 0) return
+    if (parsed?.patch === local.patch) return parsed.diff
+    const diff = processFile(local.patch, { cacheKey: local.patch })
+    if (!diff) return
+    parsed = { patch: local.patch, diff }
+    return diff
+  }
 
   const large = createMemo(() => {
     return Math.max(before().length, after().length) > 500_000
@@ -200,7 +255,7 @@ export function Diff<T>(props: DiffProps<T>) {
     }
 
     const perf = large() ? { ...base, ...largeOptions } : base
-    if (!mobile()) return perf
+    if (!mobile() || props.disableLineNumbers === false) return perf
 
     return {
       ...perf,
@@ -222,13 +277,45 @@ export function Diff<T>(props: DiffProps<T>) {
     return result.virtualizer
   }
 
+  const scroller = () => {
+    let node = container.parentElement
+    while (node) {
+      const style = getComputedStyle(node)
+      if (style.overflowY === "auto" || style.overflowY === "scroll" || style.overflowY === "overlay") return node
+      node = node.parentElement
+    }
+  }
+
+  const move = (root: HTMLElement, top: number) => {
+    if (local.scrollTo) return local.scrollTo(top)
+    root.scrollTo({ top, behavior: "instant" })
+  }
+
+  const scrollToLine = (line: number, side: "additions" | "deletions") => {
+    if (!(instance instanceof VirtualizedFileDiff)) return true
+    const position = instance.getLinePosition(line, side)
+    const root = scroller()
+    if (!position || !root) return false
+    const box = container.getBoundingClientRect()
+    const viewport = root.getBoundingClientRect()
+    const top = root.scrollTop + box.top - viewport.top + position.top
+    move(root, top - root.clientHeight / 2 + position.height / 2)
+    return true
+  }
+
+  const handle: DiffHandle = { scrollToLine }
+
   createEffect(() => {
     if (visible()) return
-    container.style.minHeight = `${estimate()}px`
+    container.style.minHeight = `${reserved(local.sizeKey, container.clientWidth) ?? estimate()}px`
   })
 
   createEffect(() => {
     if (visible()) return
+    if (local.visible) {
+      setVisible(true)
+      return
+    }
     const cleanup = observe(container, () => setVisible(true))
     onCleanup(cleanup)
   })
@@ -242,6 +329,17 @@ export function Diff<T>(props: DiffProps<T>) {
 
     return root
   }
+
+  createEffect(() => {
+    if (typeof ResizeObserver === "undefined") return
+    const resize = new ResizeObserver(() => {
+      const root = getRoot()
+      if (!visible() || !current() || !root?.querySelector("[data-line]")) return
+      remember(local.sizeKey, container.clientWidth, container.offsetHeight)
+    })
+    resize.observe(container)
+    onCleanup(() => resize.disconnect())
+  })
 
   const applyScheme = () => {
     const host = container.querySelector("diffs-container")
@@ -271,61 +369,10 @@ export function Diff<T>(props: DiffProps<T>) {
       root.adoptedStyleSheets = [...root.adoptedStyleSheets, separatorPatchSheet]
   }
 
-  const lineIndex = (split: boolean, element: HTMLElement) => {
-    const raw = element.dataset.lineIndex
-    if (!raw) return
-    const values = raw
-      .split(",")
-      .map((value) => parseInt(value, 10))
-      .filter((value) => !Number.isNaN(value))
-    if (values.length === 0) return
-    if (!split) return values[0]
-    if (values.length === 2) return values[1]
-    return values[0]
-  }
-
-  const rowIndex = (root: ShadowRoot, split: boolean, line: number, side: SelectionSide | undefined) => {
-    const nodes = Array.from(root.querySelectorAll(`[data-line="${line}"], [data-alt-line="${line}"]`)).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    )
-    if (nodes.length === 0) return
-
-    const targetSide = side ?? "additions"
-
-    for (const node of nodes) {
-      if (findSide(node) === targetSide) return lineIndex(split, node)
-      if (parseInt(node.dataset.altLine ?? "", 10) === line) return lineIndex(split, node)
-    }
-  }
-
   const fixSelection = (range: SelectedLineRange | null) => {
-    if (!range) return range
     const root = getRoot()
     if (!root) return
-
-    const diffs = root.querySelector("[data-diff]")
-    if (!(diffs instanceof HTMLElement)) return
-
-    const split = diffs.dataset.diffType === "split"
-
-    const start = rowIndex(root, split, range.start, range.side)
-    const end = rowIndex(root, split, range.end, range.endSide ?? range.side)
-    if (start === undefined || end === undefined) {
-      if (root.querySelector("[data-line], [data-alt-line]") == null) return
-      return null
-    }
-    if (start <= end) return range
-
-    const side = range.endSide ?? range.side
-    const swapped: SelectedLineRange = {
-      start: range.end,
-      end: range.start,
-    }
-
-    if (side) swapped.side = side
-    if (range.endSide && range.side) swapped.endSide = range.side
-
-    return swapped
+    return fixDiffSelection(root, range, diffRowIndex)
   }
 
   const notifyRendered = () => {
@@ -347,6 +394,7 @@ export function Diff<T>(props: DiffProps<T>) {
         if (token !== renderToken) return
         // Clear the height pin now that Pierre has rendered new content.
         container.style.minHeight = ""
+        remember(local.sizeKey, container.clientWidth, container.offsetHeight)
         setSelectedLines(lastSelection)
         local.onRendered?.()
       })
@@ -388,6 +436,7 @@ export function Diff<T>(props: DiffProps<T>) {
     if (typeof MutationObserver === "undefined") {
       container.style.minHeight = ""
       if (!root || !isReady(root)) return
+      remember(local.sizeKey, container.clientWidth, container.offsetHeight)
       setSelectedLines(lastSelection)
       local.onRendered?.()
       return
@@ -410,60 +459,6 @@ export function Diff<T>(props: DiffProps<T>) {
     observer.observe(container, { childList: true, subtree: true })
   }
 
-  const applyCommentedLines = (ranges: SelectedLineRange[]) => {
-    const root = getRoot()
-    if (!root) return
-
-    const existing = Array.from(root.querySelectorAll("[data-comment-selected]"))
-    for (const node of existing) {
-      if (!(node instanceof HTMLElement)) continue
-      node.removeAttribute("data-comment-selected")
-    }
-
-    const diffs = root.querySelector("[data-diff]")
-    if (!(diffs instanceof HTMLElement)) return
-
-    const split = diffs.dataset.diffType === "split"
-
-    const rows = Array.from(diffs.querySelectorAll("[data-line-index]")).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    )
-    if (rows.length === 0) return
-
-    const annotations = Array.from(diffs.querySelectorAll("[data-line-annotation]")).filter(
-      (node): node is HTMLElement => node instanceof HTMLElement,
-    )
-
-    for (const range of ranges) {
-      const start = rowIndex(root, split, range.start, range.side)
-      if (start === undefined) continue
-
-      const end = (() => {
-        const same = range.end === range.start && (range.endSide == null || range.endSide === range.side)
-        if (same) return start
-        return rowIndex(root, split, range.end, range.endSide ?? range.side)
-      })()
-      if (end === undefined) continue
-
-      const first = Math.min(start, end)
-      const last = Math.max(start, end)
-
-      for (const row of rows) {
-        const idx = lineIndex(split, row)
-        if (idx === undefined) continue
-        if (idx < first || idx > last) continue
-        row.setAttribute("data-comment-selected", "")
-      }
-
-      for (const annotation of annotations) {
-        const idx = parseInt(annotation.dataset.lineAnnotation?.split(",")[1] ?? "", 10)
-        if (Number.isNaN(idx)) continue
-        if (idx < first || idx > last) continue
-        annotation.setAttribute("data-comment-selected", "")
-      }
-    }
-  }
-
   const setSelectedLines = (range: SelectedLineRange | null) => {
     const active = current()
     if (!active) {
@@ -484,42 +479,8 @@ export function Diff<T>(props: DiffProps<T>) {
   const updateSelection = () => {
     const root = getRoot()
     if (!root) return
-
-    const selection =
-      (root as unknown as { getSelection?: () => Selection | null }).getSelection?.() ?? window.getSelection()
-    if (!selection || selection.isCollapsed) return
-
-    const domRange =
-      (
-        selection as unknown as {
-          getComposedRanges?: (options?: { shadowRoots?: ShadowRoot[] }) => Range[]
-        }
-      ).getComposedRanges?.({ shadowRoots: [root] })?.[0] ??
-      (selection.rangeCount > 0 ? selection.getRangeAt(0) : undefined)
-
-    const startNode = domRange?.startContainer ?? selection.anchorNode
-    const endNode = domRange?.endContainer ?? selection.focusNode
-    if (!startNode || !endNode) return
-
-    if (!root.contains(startNode) || !root.contains(endNode)) return
-
-    const start = findLineNumber(startNode)
-    const end = findLineNumber(endNode)
-    if (start === undefined || end === undefined) return
-
-    const startSide = findSide(startNode)
-    const endSide = findSide(endNode)
-    const side = startSide ?? endSide
-
-    const selected: SelectedLineRange = {
-      start,
-      end,
-    }
-
-    if (side) selected.side = side
-    if (endSide && side && endSide !== side) selected.endSide = endSide
-
-    setSelectedLines(selected)
+    const selected = readSelectedLineRange(root, findLineNumber, findSide)
+    if (selected) setSelectedLines(selected)
   }
 
   const scheduleSelectionUpdate = () => {
@@ -681,8 +642,19 @@ export function Diff<T>(props: DiffProps<T>) {
 
     const opts = options()
     const workerPool = large() ? getWorkerPool("unified") : getWorkerPool(props.diffStyle)
-    const virtualizer = getVirtualizer()
+    // Eager (non-virtualized) patch-backed diffs render their visible hunks once
+    // and never re-render on scroll or height changes, avoiding Pierre's
+    // re-render-all storms. Full-content or oversized diffs keep virtualizing.
+    const virtualizer = local.virtualized === false ? undefined : getVirtualizer()
+    if (local.virtualized === false && sharedVirtualizer) {
+      sharedVirtualizer.release()
+      sharedVirtualizer = undefined
+    }
     const annotations = untrack(() => local.annotations)
+    // Parse hunk-bounded patches only after the deferred visibility gate. This
+    // preserves quick session switching while avoiding a full before/after diff
+    // reconstruction for tiny changes inside large source files.
+    const metadata = local.fileDiff ?? patchDiff()
 
     // Preserve container height during re-render to prevent scroll jumps.
     // When Pierre tears down the DOM (innerHTML = ""), the container collapses
@@ -699,13 +671,15 @@ export function Diff<T>(props: DiffProps<T>) {
 
     container.innerHTML = ""
 
-    if (local.fileDiff) {
+    if (metadata) {
       instance.render({
-        fileDiff: local.fileDiff,
+        fileDiff: metadata,
         lineAnnotations: annotations,
         containerWrapper: container,
       })
     } else {
+      const oldFile = local.before!
+      const newFile = local.after!
       const beforeContents = before()
       const afterContents = after()
 
@@ -715,12 +689,13 @@ export function Diff<T>(props: DiffProps<T>) {
       }
 
       instance.render({
-        oldFile: { ...local.before, contents: beforeContents, cacheKey: cacheKey(beforeContents) },
-        newFile: { ...local.after, contents: afterContents, cacheKey: cacheKey(afterContents) },
+        oldFile: { ...oldFile, contents: beforeContents, cacheKey: cacheKey(beforeContents) },
+        newFile: { ...newFile, contents: afterContents, cacheKey: cacheKey(afterContents) },
         lineAnnotations: annotations,
         containerWrapper: container,
       })
     }
+    untrack(() => local.handle?.(handle))
 
     applyScheme()
     patchSeparatorLayout()
@@ -728,6 +703,22 @@ export function Diff<T>(props: DiffProps<T>) {
     setRendered((value) => value + 1)
     notifyRendered()
   })
+
+  let restore: { instance: FileDiff<T>; apply: () => void } | undefined
+  createComputed(
+    on(
+      () => local.annotations,
+      () => {
+        restore = undefined
+        if (!instance || instance instanceof VirtualizedFileDiff) return
+        const root = scroller()
+        if (!root) return
+        const apply = capture(container, root, (offset) => move(root, offset))
+        if (apply) restore = { instance, apply }
+      },
+      { defer: true },
+    ),
+  )
 
   // Separate effect for annotation-only updates. When annotations change but
   // file contents / options stay the same, this avoids the full teardown+rebuild
@@ -738,9 +729,17 @@ export function Diff<T>(props: DiffProps<T>) {
     on(
       () => local.annotations,
       (annotations) => {
+        const saved = restore
+        restore = undefined
         if (!instance) return
         instance.setLineAnnotations(annotations ?? [])
         instance.rerender()
+        if (saved) {
+          requestAnimationFrame(() => {
+            if (instance === saved.instance) saved.apply()
+          })
+        }
+        notifyRendered()
       },
       { defer: true },
     ),
@@ -761,7 +760,8 @@ export function Diff<T>(props: DiffProps<T>) {
   createEffect(() => {
     rendered()
     const ranges = local.commentedLines ?? []
-    requestAnimationFrame(() => applyCommentedLines(ranges))
+    const root = getRoot()
+    if (root) requestAnimationFrame(() => applyDiffCommentedLines(root, ranges))
   })
 
   createEffect(() => {
@@ -770,19 +770,14 @@ export function Diff<T>(props: DiffProps<T>) {
   })
 
   createEffect(() => {
-    if (props.enableLineSelection !== true) return
-
-    container.addEventListener("mousedown", handleMouseDown)
-    container.addEventListener("mousemove", handleMouseMove)
-    window.addEventListener("mouseup", handleMouseUp)
-    document.addEventListener("selectionchange", handleSelectionChange)
-
-    onCleanup(() => {
-      container.removeEventListener("mousedown", handleMouseDown)
-      container.removeEventListener("mousemove", handleMouseMove)
-      window.removeEventListener("mouseup", handleMouseUp)
-      document.removeEventListener("selectionchange", handleSelectionChange)
-    })
+    onCleanup(
+      attachLineSelectionListeners(container, props.enableLineSelection === true, {
+        mousedown: handleMouseDown,
+        mousemove: handleMouseMove,
+        mouseup: handleMouseUp,
+        selectionchange: handleSelectionChange,
+      }),
+    )
   })
 
   onCleanup(() => {
@@ -807,6 +802,7 @@ export function Diff<T>(props: DiffProps<T>) {
     pendingSelectionEnd = false
 
     instance?.cleanUp()
+    local.handle?.(undefined)
     setCurrent(undefined)
     sharedVirtualizer?.release()
     sharedVirtualizer = undefined

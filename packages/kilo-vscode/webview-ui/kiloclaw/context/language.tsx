@@ -15,6 +15,7 @@ import { dict as da } from "../i18n/da"
 import { dict as de } from "../i18n/de"
 import { dict as es } from "../i18n/es"
 import { dict as fr } from "../i18n/fr"
+import { dict as it } from "../i18n/it"
 import { dict as ja } from "../i18n/ja"
 import { dict as ko } from "../i18n/ko"
 import { dict as nl } from "../i18n/nl"
@@ -26,6 +27,7 @@ import { dict as tr } from "../i18n/tr"
 import { dict as zh } from "../i18n/zh"
 import { dict as uk } from "../i18n/uk"
 import { dict as zht } from "../i18n/zht"
+import { dict as fa } from "../i18n/fa"
 
 const dicts: Record<Locale, Record<string, string>> = {
   en,
@@ -36,6 +38,7 @@ const dicts: Record<Locale, Record<string, string>> = {
   de: { ...en, ...de },
   es: { ...en, ...es },
   fr: { ...en, ...fr },
+  it: { ...en, ...it },
   ja: { ...en, ...ja },
   ko: { ...en, ...ko },
   nl: { ...en, ...nl },
@@ -47,6 +50,7 @@ const dicts: Record<Locale, Record<string, string>> = {
   uk: { ...en, ...uk },
   zh: { ...en, ...zh },
   zht: { ...en, ...zht },
+  fa: { ...en, ...fa },
 }
 
 type LanguageCtx = {

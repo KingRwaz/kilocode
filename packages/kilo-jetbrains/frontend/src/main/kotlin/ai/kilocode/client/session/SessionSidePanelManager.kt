@@ -5,6 +5,8 @@ import ai.kilocode.client.app.KiloWorkspaceService
 import ai.kilocode.client.app.Workspace
 import ai.kilocode.client.session.history.HistoryController
 import ai.kilocode.client.session.history.HistoryPanel
+import ai.kilocode.client.util.UiTimerSource
+import ai.kilocode.client.util.UiTimers
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.application.ApplicationManager
@@ -13,91 +15,85 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.IdeFocusManager
+import com.intellij.util.concurrency.annotations.RequiresEdt
 import kotlinx.coroutines.cancel
 import java.awt.BorderLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
 
 class SessionSidePanelManager(
-    private val project: Project,
-    private val root: Workspace,
-    private val create: (Project, Workspace, SessionManager, SessionRef?) -> SessionUi = { project, workspace, manager, ref ->
-        service<SessionUiFactory>().create(project, workspace, manager, ref)
-    },
-    private val resolve: (String) -> Workspace = { dir -> service<KiloWorkspaceService>().workspace(dir) },
+    project: Project,
+    root: Workspace,
+    create: (Project, Workspace, SessionManager, SessionRef?, UiTimerSource) -> SessionUi =
+        { project, workspace, manager, ref, timers ->
+            service<SessionUiFactory>().create(project, workspace, manager, ref, timers)
+        },
+    resolve: (String) -> Workspace = { dir -> service<KiloWorkspaceService>().workspace(dir) },
+    status: () -> Map<String, SessionActivityKind> = { project.service<KiloSessionService>().activitySnapshot() },
     private val history: ((Disposable, (SessionRef) -> Unit, (String) -> Unit) -> JComponent)? = null,
-) : SessionManager, Disposable {
+    timers: UiTimerSource = UiTimers,
+    request: (JComponent) -> Unit = { focus ->
+        ApplicationManager.getApplication().invokeLater({
+            IdeFocusManager.getInstance(project).requestFocusInProject(focus, project)
+        }, ModalityState.defaultModalityState())
+    },
+) : SessionHost(project, root, create, resolve, status, timers, request) {
     val component: JPanel = object : JPanel(BorderLayout()), DataProvider {
         override fun getData(dataId: String): Any? {
             if (SessionManager.KEY.`is`(dataId)) return this@SessionSidePanelManager
+            if (SessionManager.WORKSPACE_KEY.`is`(dataId)) return root
             return null
         }
     }
 
-    private val opened = mutableMapOf<String, SessionUi>()
-    private val all = mutableSetOf<SessionUi>()
-    private var current: SessionUi? = null
-    private var latest: SessionUi? = null
     private var panel: JComponent? = null
+    private var historyBack: (() -> Unit)? = null
 
-    val defaultFocusedComponent: JComponent? get() = current?.defaultFocusedComponent ?: (panel as? HistoryPanel)?.defaultFocusedComponent
+    /** Wired by the tool window to open the Agent Manager's New Worktree flow from the chat dock. */
+    var onNewWorktree: (() -> Unit)? = null
 
-    override fun newSession() {
-        val active = current
-        if (active?.blank == true) return
+    /** Wired by the tool window to move the current chat into an Agent Manager worktree row. */
+    var onMoveToWorktree: ((String?, String) -> Unit)? = null
+
+    override val supportsNewWorktree: Boolean get() = onNewWorktree != null
+
+    override val supportsMoveToWorktree: Boolean get() = onMoveToWorktree != null
+
+    override fun newWorktree() {
+        onNewWorktree?.invoke()
+    }
+
+    override fun moveToWorktree(sessionId: String?, directory: String) {
+        onMoveToWorktree?.invoke(sessionId, directory)
+    }
+
+    val defaultFocusedComponent: JComponent? get() = currentUi()?.defaultFocusedComponent ?: (panel as? HistoryPanel)?.defaultFocusedComponent
+
+    @RequiresEdt
+    override fun activityChanged() {
+        super.activityChanged()
+        (panel as? HistoryPanel)?.syncActivity()
+    }
+
+    @RequiresEdt
+    override fun showHistory(back: (() -> Unit)?) {
+        historyBack = back
+        val active = currentUi()
         register(active)
-        show(create(project, root, this, null))
-    }
-
-    override fun openSession(ref: SessionRef) {
-        register(current)
-        val ui = opened[ref.key] ?: run {
-            val local = (ref as? SessionRef.Local)?.session?.id
-            val existing = local?.let { opened[it] }
-            if (existing != null) {
-                opened[ref.key] = existing
-                existing
-            } else create(ref)
-        }
-        show(ui)
-    }
-
-    private fun create(ref: SessionRef): SessionUi {
-        val workspace = when (ref) {
-            is SessionRef.Local -> ref.session?.directory?.let(resolve) ?: root
-            is SessionRef.Cloud -> root
-        }
-        return create(project, workspace, this, ref).also {
-            all.add(it)
-            opened[ref.key] = it
-            val local = (ref as? SessionRef.Local)?.session?.id
-            if (local != null) opened.putIfAbsent(local, it)
-        }
-    }
-
-    override fun showHistory() {
-        register(current)
-        release(current)
+        release(active)
         val cached = panel
         val view = cached ?: createHistory().also { panel = it }
         if (cached != null && view is HistoryPanel) view.refresh()
-        if (current == null && component.componentCount == 1 && component.getComponent(0) === view) {
-            focusHistory(view)
+        if (currentUi() == null && component.componentCount == 1 && component.getComponent(0) === view) {
+            focus((view as? HistoryPanel)?.defaultFocusedComponent)
             return
         }
-        current = null
+        clearCurrent()
         component.removeAll()
         component.add(view, BorderLayout.CENTER)
         component.revalidate()
         component.repaint()
-        focusHistory(view)
-    }
-
-    private fun focusHistory(view: JComponent) {
-        val focus = (view as? HistoryPanel)?.defaultFocusedComponent ?: return
-        ApplicationManager.getApplication().invokeLater({
-            IdeFocusManager.getInstance(project).requestFocusInProject(focus, project)
-        }, ModalityState.defaultModalityState())
+        focus((view as? HistoryPanel)?.defaultFocusedComponent)
     }
 
     private fun createHistory(): JComponent {
@@ -113,63 +109,40 @@ class SessionSidePanelManager(
             deleted = this::removeSession,
         )
         Disposer.register(this) { cs.cancel() }
-        return HistoryPanel(this, controller, nav = this::back, manager = this).component
+        return HistoryPanel(this, controller, nav = this::back, manager = this, timers = timers).component
     }
 
+    @RequiresEdt
     private fun back() {
-        val ui = latest
-        if (ui != null && ui in all) {
+        val callback = historyBack
+        historyBack = null
+        if (callback != null) {
+            callback()
+            return
+        }
+        val ui = latestUi()
+        if (ui != null) {
             show(ui)
             return
         }
-        latest = null
         newSession()
     }
 
-    private fun removeSession(id: String) {
-        val ui = opened.remove(id) ?: return
-        opened.entries.removeIf { it.value === ui }
-        all.remove(ui)
-        if (current === ui) current = null
-        if (latest === ui) latest = null
-        Disposer.dispose(ui)
+    @Suppress("unused")
+    override fun removeSession(id: String) {
+        super.removeSession(id)
     }
 
-    private fun show(ui: SessionUi) {
-        all.add(ui)
-        register(ui)
-        latest = ui
-        if (current === ui) return
-        release(current)
+    @RequiresEdt
+    override fun present(ui: SessionUi?) {
         component.removeAll()
-        current = ui
-        component.add(ui, BorderLayout.CENTER)
+        if (ui != null) component.add(ui, BorderLayout.CENTER)
         component.revalidate()
         component.repaint()
     }
 
-    private fun register(ui: SessionUi?) {
-        val key = ui?.cacheKey ?: return
-        opened.putIfAbsent(key, ui)
-    }
-
-    private fun release(ui: SessionUi?) {
-        if (ui == null) return
-        if (ui.cacheKey != null) {
-            register(ui)
-            return
-        }
-        all.remove(ui)
-        Disposer.dispose(ui)
-    }
-
     override fun dispose() {
-        val items = all.toList()
-        opened.clear()
-        all.clear()
-        current = null
-        latest = null
-        component.removeAll()
-        items.forEach { Disposer.dispose(it) }
+        super.dispose()
+        panel = null
     }
 }

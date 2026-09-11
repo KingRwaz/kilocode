@@ -29,18 +29,40 @@ export {
   fetchProfileWithBalance,
   fetchDefaultModel,
   getKiloProfile,
+  defaultOrganizationId,
   getKiloBalance,
   getKiloDefaultModel,
   promptOrganizationSelection,
 } from "./api/profile.js"
-export { fetchKiloModels, type KiloModelsResult } from "./api/models.js"
+export { fetchKiloPassState } from "./api/kilo-pass.js"
+export {
+  fetchKiloModels,
+  type KiloModelsResult,
+  fetchKiloImageModels,
+  type KiloImageModel,
+  type KiloImageModelsResult,
+  fetchKiloTranscriptionModels,
+  type KiloTranscriptionModel,
+  type KiloTranscriptionModelsResult,
+} from "./api/models.js"
 export {
   EMPTY_KILO_EMBEDDING_MODEL_CATALOG,
   fetchKiloEmbeddingModelCatalog,
   type KiloEmbeddingModel,
   type KiloEmbeddingModelCatalog,
+  type KiloEmbeddingModelCatalogIssue,
 } from "./api/embedding-models.js"
 export { resolveKiloGatewayBaseUrl, resolveKiloOpenRouterBaseUrl } from "./api/url.js"
+export {
+  AUTOCOMPLETE_MODELS,
+  DEFAULT_AUTOCOMPLETE_MODEL,
+  getAutocompleteModel,
+  getAutocompleteModelById,
+  validAutocompleteModel,
+  validAutocompleteProvider,
+  type AutocompleteModelDef,
+  type AutocompleteProviderID,
+} from "./autocomplete.js"
 export {
   fetchOrganizationModes,
   clearModesCache,
@@ -48,7 +70,21 @@ export {
   type OrganizationModeConfig,
 } from "./api/modes.js"
 export { fetchKilocodeNotifications, type KilocodeNotification } from "./api/notifications.js"
-export { fetchCloudSession, fetchCloudSessionForImport, importSessionToDb } from "./cloud-sessions.js"
+export {
+  fetchByokEntries,
+  fetchCodingPlanSubscriptions,
+  fetchCodingPlanUsage,
+  type ByokEntry,
+  type CodingPlanSubscription,
+  type CodingPlanQuotaWindow,
+} from "./api/trpc.js"
+export {
+  fetchCloudSession,
+  fetchCloudSessionForImport,
+  SessionImportValidationError,
+  prepareSessionImport,
+  importSessionToDb,
+} from "./cloud-sessions.js"
 
 // ============================================================================
 // Server Routes (optional - requires hono and OpenCode dependencies)
@@ -64,6 +100,7 @@ export {
   getNotifications,
   getProfile,
   getToken,
+  normalizeClawStatus,
   setOrganization,
 } from "./server/handlers.js"
 
@@ -83,6 +120,7 @@ export type {
   Organization,
   KilocodeProfile,
   KilocodeBalance,
+  KiloPassState,
   PollOptions,
   PollResult,
   // Provider types

@@ -6,12 +6,18 @@ import { Button } from "@kilocode/kilo-ui/button"
 import { IconButton } from "@kilocode/kilo-ui/icon-button"
 
 import { useConfig } from "../../context/config"
+import { useProvider } from "../../context/provider"
 import { useSession } from "../../context/session"
 import { useLanguage } from "../../context/language"
 import type { AgentConfig, AgentInfo, PermissionConfig, PermissionRuleItem } from "../../types/messages"
+import { removable } from "./agent-behaviour-patches"
+import { parseModelString } from "../../../../src/shared/provider-model"
 import SettingsRow from "./SettingsRow"
 import { buildExport } from "./mode-io"
+import { modelPatch } from "./mode-model"
 import PermissionEditor from "./PermissionEditor"
+import { ModelSelectorBase } from "../shared/ModelSelector"
+import { ThinkingSelectorBase } from "../shared/ThinkingSelector"
 
 interface Props {
   name: string
@@ -22,6 +28,7 @@ interface Props {
 const ModeEditView: Component<Props> = (props) => {
   const language = useLanguage()
   const { config, updateConfig } = useConfig()
+  const provider = useProvider()
   const session = useSession()
 
   // agent() may be undefined for modes that only exist in the config draft (just
@@ -32,6 +39,13 @@ const ModeEditView: Component<Props> = (props) => {
   const [expanded, setExpanded] = createSignal(false)
 
   const cfg = createMemo<AgentConfig>(() => config().agent?.[props.name] ?? {})
+  const model = createMemo(() => parseModelString(cfg().model ?? undefined))
+  const variants = createMemo(() => {
+    const sel = model()
+    if (!sel) return []
+    return Object.keys(provider.findModel(sel)?.variants ?? {})
+  })
+  const showVariant = () => variants().length > 0 || !!cfg().variant
 
   const update = (partial: Partial<AgentConfig>) => {
     const existing = config().agent ?? {}
@@ -42,6 +56,20 @@ const ModeEditView: Component<Props> = (props) => {
         [props.name]: { ...current, ...partial },
       },
     })
+  }
+
+  const selectModel = (providerID: string, modelID: string) => {
+    const sel = { providerID, modelID }
+    const list = Object.keys(provider.findModel(sel)?.variants ?? {})
+    update(modelPatch(providerID, modelID, list, cfg().variant))
+  }
+
+  const selectVariant = (value: string) => {
+    update({ variant: value })
+  }
+
+  const clearVariant = () => {
+    update({ variant: null })
   }
 
   const updatePermission = (patch: PermissionConfig) => {
@@ -85,15 +113,17 @@ const ModeEditView: Component<Props> = (props) => {
               title={language.t("settings.agentBehaviour.exportMode")}
               onClick={exportMode}
             />
-            <IconButton
-              size="small"
-              variant="ghost"
-              icon="close"
-              onClick={() => {
-                const a = agent()
-                if (a) props.onRemove(a)
-              }}
-            />
+            <Show when={removable(agent())}>
+              <IconButton
+                size="small"
+                variant="ghost"
+                icon="close"
+                onClick={() => {
+                  const a = agent()
+                  if (a) props.onRemove(a)
+                }}
+              />
+            </Show>
           </div>
         </Show>
       </div>
@@ -147,12 +177,34 @@ const ModeEditView: Component<Props> = (props) => {
           title={language.t("settings.agentBehaviour.modelOverride.title")}
           description={language.t("settings.agentBehaviour.modelOverride.description")}
         >
-          <TextField
-            value={cfg().model ?? ""}
-            placeholder="e.g. anthropic/claude-sonnet-4-20250514"
-            onChange={(val) => update({ model: val || null })}
+          <ModelSelectorBase
+            value={model()}
+            onSelect={selectModel}
+            placement="bottom-start"
+            allowClear
+            clearLabel={language.t("settings.providers.notSet")}
+            label={language.t("settings.agentBehaviour.modelOverride.title")}
+            description={language.t("settings.agentBehaviour.modelOverride.description")}
           />
         </SettingsRow>
+
+        <Show when={showVariant()}>
+          <SettingsRow
+            title={language.t("settings.agentBehaviour.variantOverride.title")}
+            description={language.t("settings.agentBehaviour.variantOverride.description")}
+          >
+            <ThinkingSelectorBase
+              variants={variants()}
+              value={cfg().variant ?? undefined}
+              onSelect={selectVariant}
+              onClear={clearVariant}
+              allowClear
+              clearLabel={language.t("settings.providers.notSet")}
+              placement="bottom-start"
+              globalTrigger={false}
+            />
+          </SettingsRow>
+        </Show>
 
         <SettingsRow
           title={language.t("settings.agentBehaviour.temperature.title")}

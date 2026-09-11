@@ -5,11 +5,7 @@ description: Dictate prompts through your signed-in Kilo account.
 
 # Voice Transcription
 
-{% callout type="warning" title="Experimental feature" %}
-Speech to Text is experimental. Expect issues and changes as it matures.
-{% /callout %}
-
-Use voice input in prompt fields instead of typing. Transcription uses your Kilo account through Kilo Gateway.
+Use voice input in prompt fields instead of typing. When the Kilo provider is enabled and you are signed in, the microphone appears automatically and transcription uses your account through Kilo Gateway.
 
 ---
 
@@ -43,34 +39,24 @@ Enable and sign in to the Kilo provider to use voice input in prompt fields. Req
 
 ---
 
-## Enable input
+## Choose a model
 
-Voice input is experimental and must be enabled:
+You can optionally choose a transcription model in **Settings** > **Models** > **Speech to Text Model**. Kilo stores this choice as `experimental.speech_to_text_model` in your global Kilo CLI config (`~/.config/kilo/kilo.jsonc`).
 
-1. Open Kilo Code settings
-2. Open **Experimental** settings
-3. Enable the **Speech to Text** experiment
-
-Kilo stores this toggle in your global Kilo CLI config (`~/.config/kilo/kilo.jsonc`), not VS Code user settings:
-
-```json
-{
-  "experimental": {
-    "speech_to_text": true
-  }
-}
-```
+The model list is discovered from the Kilo Gateway and reflects the transcription models available to your account or organization, so newly available models appear automatically.
 
 ---
 
 ## Record prompts
 
-Once enabled, a microphone button appears in prompt fields:
+When you are signed in to the enabled Kilo provider, a microphone button appears in prompt fields:
 
 1. Click the microphone button to start recording
 2. Speak your message clearly
 3. Click again to stop recording
 4. Your speech is transcribed into text
+
+You can also use **Cmd/Ctrl+K** while a Kilo prompt or review comment field is focused. Tap it to start or stop recording, or hold it while speaking and release to transcribe and submit the focused field. Press it during transcription to cancel.
 
 The feature includes real-time audio level visualization and voice activity detection to automatically detect when you're speaking.
 
@@ -87,13 +73,12 @@ The feature includes real-time audio level visualization and voice activity dete
 
 **Microphone button not appearing:**
 
-- Ensure the Speech to Text experiment is enabled
-- Verify FFmpeg is installed and in your PATH
 - Enable and sign in to the Kilo provider
 
 **Transcription errors:**
 
 - Confirm the Kilo provider remains enabled and signed in
+- Verify FFmpeg is installed and in your PATH
 - Check your internet connection
 - Try speaking more clearly or adjusting your microphone settings
 
@@ -101,7 +86,7 @@ The feature includes real-time audio level visualization and voice activity dete
 
 ## Know limits
 
-Speech to Text is experimental and may have limitations:
+Voice transcription has these requirements:
 
 - Requires an active internet connection
 - Requires Kilo Gateway access through your Kilo account

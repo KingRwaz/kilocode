@@ -9,6 +9,8 @@ export interface DiffVirtualFile {
   patch?: string
   additions: number
   deletions: number
+  status?: "added" | "deleted" | "modified"
+  files?: Omit<DiffVirtualFile, "files" | "initialDiffStyle">[]
   initialDiffStyle: "unified" | "split"
 }
 
@@ -33,8 +35,9 @@ export class DiffVirtualProvider implements vscode.Disposable {
 
   public open(diff: DiffVirtualFile): void {
     this.pending = diff
+    const count = diff.files?.length ?? 1
     const filename = diff.file.split("/").pop() ?? diff.file
-    const title = `Changes: ${filename}`
+    const title = count > 1 ? `Changes: ${count} files` : `Changes: ${filename}`
 
     if (this.panel) {
       this.panel.title = title
@@ -113,6 +116,7 @@ export class DiffVirtualProvider implements vscode.Disposable {
       scriptUri: webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "diff-virtual.js")),
       styleUri: webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "diff-virtual.css")),
       iconsBaseUri: webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "assets", "icons")),
+      workerUri: webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "shiki-worker.js")),
       title: "Diff Virtual",
       extraStyles: "#root { display: flex; flex-direction: column; height: 100%; }",
     })

@@ -4,8 +4,18 @@ import ai.kilocode.client.session.model.Tool
 import ai.kilocode.client.session.model.ToolExecState
 import ai.kilocode.client.session.model.toolKind
 import ai.kilocode.client.session.ui.style.SessionEditorStyle
+import ai.kilocode.client.session.ui.style.SessionUiStyle
 import ai.kilocode.client.session.views.question.QuestionResultView
+import ai.kilocode.client.session.views.tool.ToolView
+import ai.kilocode.client.ui.UiStyle
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import com.intellij.ui.components.JBTextArea
+import java.awt.Component
+import java.awt.Container
+import java.awt.event.MouseEvent
+import javax.swing.Icon
+import javax.swing.JLabel
+import javax.swing.JPanel
 
 @Suppress("UnstableApiUsage")
 class QuestionResultViewTest : BasePlatformTestCase() {
@@ -93,6 +103,21 @@ class QuestionResultViewTest : BasePlatformTestCase() {
         assertTrue(view.bodyText().contains("Manual verification, Unit tests"))
     }
 
+    fun `test answer rows keep standard gap after question text`() {
+        val view = QuestionResultView(completedTool(
+            input = mapOf("questions" to """[{"question":"Q1"}]"""),
+            metadata = mapOf("answers" to """[["A1"]]"""),
+        ))
+
+        view.toggle()
+        val body = view.node(1)
+        val row = body.node(0)
+        val text = row.components[0] as JBTextArea
+        val ins = text.border.getBorderInsets(text)
+
+        assertEquals(UiStyle.Gap.xs(), ins.bottom)
+    }
+
     fun `test label shows count of non-empty answers`() {
         val tool = completedTool(
             input = mapOf("questions" to """[{"question":"Q1"},{"question":"Q2"}]"""),
@@ -122,6 +147,43 @@ class QuestionResultViewTest : BasePlatformTestCase() {
         assertFalse("Should be collapsed after second toggle", view.isExpanded())
     }
 
+    fun `test toggle uses right and down chevron icons`() {
+        val view = QuestionResultView(completedTool(
+            input = mapOf("questions" to """[{"question":"Q1"}]"""),
+            metadata = mapOf("answers" to """[["A1"]]"""),
+        ))
+
+        assertTrue(icons(view).contains(SessionViewIcons.chevronCollapsed))
+        assertTrue(icons(view).contains(SessionViewIcons.chevronRight))
+        val closed = SessionViewIcons.chevronCollapsed
+
+        view.toggle()
+
+        assertTrue(icons(view).contains(SessionViewIcons.chevronExpanded))
+        assertTrue(icons(view).contains(SessionViewIcons.chevronDown))
+        assertEquals(closed.iconWidth, SessionViewIcons.chevronExpanded.iconWidth)
+        assertEquals(closed.iconHeight, SessionViewIcons.chevronExpanded.iconHeight)
+    }
+
+    fun `test hover only changes header background`() {
+        val view = QuestionResultView(completedTool(
+            input = mapOf("questions" to """[{"question":"Q1"}]"""),
+            metadata = mapOf("answers" to """[["A1"]]"""),
+        ))
+        val row = view.node(0)
+
+        assertNull("collapsed card draws no outline", view.border)
+        view.toggle()
+
+        view.setHovered(true)
+
+        assertEquals(SessionUiStyle.View.Surface.headerHoverBgColor().rgb, row.background.rgb)
+        assertNull("expanded card draws no outline", view.border)
+        view.setHovered(false)
+        assertEquals(SessionUiStyle.View.Surface.headerBgColor().rgb, row.background.rgb)
+        assertNull("expanded card draws no outline", view.border)
+    }
+
     // ------ view factory routing ------
 
     fun `test view factory uses question result view for completed parsable question tool`() {
@@ -129,7 +191,7 @@ class QuestionResultViewTest : BasePlatformTestCase() {
             input = mapOf("questions" to """[{"question":"Q1"}]"""),
             metadata = mapOf("answers" to """[["A1"]]"""),
         )
-        val view = ViewFactory.create(tool)
+        val view = ViewFactory.create(tool, { _, _ -> }) {}
 
         assertTrue(view is QuestionResultView)
     }
@@ -139,14 +201,14 @@ class QuestionResultViewTest : BasePlatformTestCase() {
             input = emptyMap(),
             metadata = emptyMap(),
         )
-        val view = ViewFactory.create(tool)
+        val view = ViewFactory.create(tool, { _, _ -> }) {}
 
         assertTrue(view is ToolView)
     }
 
     fun `test view factory falls back to tool view for running question`() {
         val tool = runningTool("question")
-        val view = ViewFactory.create(tool)
+        val view = ViewFactory.create(tool, { _, _ -> }) {}
 
         assertTrue(view is ToolView)
     }
@@ -237,4 +299,35 @@ class QuestionResultViewTest : BasePlatformTestCase() {
 
     private fun runningTool(name: String, id: String = "tp1"): Tool =
         Tool(id, name, toolKind(name)).apply { state = ToolExecState.RUNNING }
+
+    private fun Container.node(index: Int) = components[index] as JPanel
+
+    private fun enter(component: Component) = event(component, MouseEvent.MOUSE_ENTERED)
+
+    private fun exit(component: Component) = event(component, MouseEvent.MOUSE_EXITED)
+
+    private fun event(component: Component, id: Int) {
+        component.dispatchEvent(MouseEvent(
+            component,
+            id,
+            System.currentTimeMillis(),
+            0,
+            1,
+            1,
+            0,
+            false,
+        ))
+    }
+
+    private fun icons(component: Component): List<Icon> {
+        val found = mutableListOf<Icon>()
+        collect(component, found)
+        return found
+    }
+
+    private fun collect(component: Component, found: MutableList<Icon>) {
+        if (component is JLabel) component.icon?.let(found::add)
+        if (component is Container) component.components.forEach { collect(it, found) }
+    }
+
 }

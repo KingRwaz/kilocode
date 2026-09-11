@@ -48,6 +48,12 @@ describe("buildCspString", () => {
     expect(result).toContain(`font-src ${cspSource}`)
   })
 
+  it("allows only webview resources for the Shiki worker", () => {
+    const result = buildCspString(cspSource, nonce)
+    expect(result).toContain(`worker-src ${cspSource}`)
+    expect(result).not.toContain(`worker-src ${cspSource} blob:`)
+  })
+
   it("includes cspSource and https: in img-src", () => {
     const result = buildCspString(cspSource, nonce)
     expect(result).toContain("img-src")
@@ -70,6 +76,17 @@ describe("buildCspString", () => {
   it("includes cspSource in connect-src for source map loading", () => {
     const result = buildCspString(cspSource, nonce)
     expect(result).toMatch(new RegExp(`connect-src\\s+${cspSource.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`))
+  })
+
+  it("does not allow frames for ordinary webviews", () => {
+    expect(buildCspString(cspSource, nonce)).not.toContain("frame-src")
+  })
+
+  it("limits Agent Manager browser frames to approved loopback origins", () => {
+    const result = buildCspString(cspSource, nonce, undefined, "http://localhost:* http://127.0.0.1:*")
+    expect(result).toContain("frame-src http://localhost:* http://127.0.0.1:*")
+    expect(result).not.toContain("frame-src *")
+    expect(result).not.toContain("frame-src https:")
   })
 
   it("joins directives with semicolons", () => {

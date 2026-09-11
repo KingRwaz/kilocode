@@ -2,21 +2,17 @@ import { Bus } from "../../bus"
 import { BusEvent } from "../../bus/bus-event"
 import { Identifier } from "../../id/id"
 import { SessionID } from "../../session/schema"
-import { ZodOverride } from "../../util/effect-zod"
+import { zod as toZod } from "@opencode-ai/core/effect-zod"
 import * as Log from "@opencode-ai/core/util/log"
-import { Telemetry, type ReviewCommand } from "@kilocode/kilo-telemetry"
+import { Telemetry } from "@kilocode/kilo-telemetry"
 import z from "zod"
 import { Schema } from "effect"
 import { KiloSessionPromptQueue } from "../session/prompt-queue"
+import { Instance } from "../instance"
+import { parseReviewCommand } from "../review/command"
 
 export namespace Suggestion {
   const log = Log.create({ service: "suggestion" })
-
-  function command(prompt: string): ReviewCommand | undefined {
-    if (!prompt.startsWith("/")) return
-    const name = prompt.slice(1).split(/\s/, 1)[0]
-    if (name === "review" || name === "local-review" || name === "local-review-uncommitted") return name
-  }
 
   export const Action = z
     .object({
@@ -39,7 +35,9 @@ export namespace Suggestion {
     }),
   })
 
-  const SuggestionIDSchema = Schema.String.annotate({ [ZodOverride]: Identifier.schema("suggestion") })
+  const SuggestionIDSchema = Schema.String.check(Schema.isStartsWith("sug"))
+  const SuggestionID = toZod(SuggestionIDSchema)
+  const SessionIDZod = toZod(SessionID)
 
   export const Info = z
     .object({
@@ -53,8 +51,8 @@ export namespace Suggestion {
 
   export const Request = z
     .object({
-      id: Identifier.schema("suggestion"),
-      sessionID: Identifier.schema("session"),
+      id: SuggestionID,
+      sessionID: SessionIDZod,
       text: z.string().describe("Suggestion text shown to the user"),
       actions: z.array(Action).min(1).max(2).describe("Available actions the user can take"),
       blocking: z
@@ -114,7 +112,6 @@ export namespace Suggestion {
     ),
   }
 
-  // kilocode_change - Instance.state() removed in v1.4.4; use module-level state
   // (request IDs are globally unique so instance scoping is not needed)
   const pending: Record<
     string,
@@ -148,7 +145,7 @@ export namespace Suggestion {
     return new Promise<Action>((resolve, reject) => {
       const info: Request = {
         id,
-        sessionID: input.sessionID,
+        sessionID: SessionID.make(input.sessionID),
         text: input.text,
         actions: input.actions,
         blocking: input.blocking,
@@ -160,7 +157,7 @@ export namespace Suggestion {
         reject,
       }
       info.actions.forEach((action, index) => {
-        const cmd = command(action.prompt)
+        const cmd = parseReviewCommand(action.prompt)
         if (!cmd) return
         Telemetry.trackSuggestionShown({
           sessionId: info.sessionID,
@@ -171,7 +168,7 @@ export namespace Suggestion {
           actionCount: info.actions.length,
         })
       })
-      Bus.publish(Event.Shown, { ...info, sessionID: SessionID.make(info.sessionID) })
+      Bus.publish(Instance.current, Event.Shown, { ...info, sessionID: SessionID.make(info.sessionID) })
     })
   }
 
@@ -195,7 +192,7 @@ export namespace Suggestion {
 
     log.info("accepted", { requestID: input.requestID, index: input.index, label: action.label })
 
-    const cmd = command(action.prompt)
+    const cmd = parseReviewCommand(action.prompt)
     if (cmd) {
       Telemetry.trackSuggestionAccepted({
         sessionId: existing.info.sessionID,
@@ -207,7 +204,7 @@ export namespace Suggestion {
       })
     }
 
-    Bus.publish(Event.Accepted, {
+    Bus.publish(Instance.current, Event.Accepted, {
       sessionID: SessionID.make(existing.info.sessionID),
       requestID: existing.info.id,
       index: input.index,
@@ -229,7 +226,7 @@ export namespace Suggestion {
 
     log.info("dismissed", { requestID })
 
-    Bus.publish(Event.Dismissed, {
+    Bus.publish(Instance.current, Event.Dismissed, {
       sessionID: SessionID.make(existing.info.sessionID),
       requestID: existing.info.id,
     })
@@ -250,7 +247,7 @@ export namespace Suggestion {
       if (entry.info.sessionID !== sessionID) continue
       delete s.pending[id]
       log.info("dismissed", { requestID: id })
-      Bus.publish(Event.Dismissed, {
+      Bus.publish(Instance.current, Event.Dismissed, {
         sessionID: SessionID.make(entry.info.sessionID),
         requestID: entry.info.id,
       })
